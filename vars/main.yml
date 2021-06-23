@@ -1,0 +1,12 @@
+---
+nrpe_version: "4.0.3"
+nagios_plugins_version: "2.3.3"
+plugins_to_download:
+  - name: check_mem.pl
+    url: https://raw.githubusercontent.com/justintime/nagios-plugins/master/check_mem/check_mem.pl
+  - name: check_version.sh
+    url: https://exchange.nagios.org/components/com_mtree/attachment.php?link_id=1785&cf_id=24
+  - name: check_fail2ban
+    url: https://raw.githubusercontent.com/n1tr0-5urf3r/icinga2-scripts/master/plugins/check_fail2ban
+  - name: check_gitlab.rb
+    url: https://sources.le-filament.com/lefilament/nagios-plugin/-/raw/master/check_gitlab.rb

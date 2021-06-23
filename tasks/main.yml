@@ -1,0 +1,146 @@
+---
+- name: Include OS-specific variables.
+  include_vars: "{{ ansible_os_family }}.yml"
+
+- name: Install NRPE dependencies
+  package:
+    name: "{{ packages_to_install }}"
+    state: present
+
+# --------------------------------------------------
+# CREATE NAGIOS USERS
+# --------------------------------------------------
+- name: Create nagios system group
+  group:
+    name: "{{ item }}"
+  with_items:
+    - nagios
+    - nagcmd
+  tags: nagios_install
+
+- name: Create nagios system user
+  user:
+    system: true
+    name: nagios
+    group: nagios
+    groups: nagcmd
+  tags: nagios_install
+
+# --------------------------------------------------
+# INSTALLATION NAGIOS NRPE
+# --------------------------------------------------
+- name: Retrieve and Uncompress Nagios NRPE
+  unarchive:
+    src: https://github.com/NagiosEnterprises/nrpe/releases/download/nrpe-{{ nrpe_version }}/nrpe-{{ nrpe_version }}.tar.gz
+    remote_src: true
+    dest: /root/
+    creates: /root/nrpe-{{ nrpe_version }}
+  notify:
+    - Initial configuration Nagios NRPE
+    - Make nagios NRPE
+    - Systemd daemon reload
+
+# Flush handlers in order to run make NRPE if necessary
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: Make NRPE start with system
+  service:
+    name: nrpe
+    state: started
+    enabled: true
+
+- name: Check that nrpe is defined in services
+  lineinfile:
+    name: /etc/services
+    regexp: '^nrpe'
+    line: "nrpe            5666/tcp                        # Nagios Remote Plugin Executor"
+
+# --------------------------------------------------
+# INSTALLATION NAGIOS PLUGINS
+# --------------------------------------------------
+- name: Retrieve and Uncompress Nagios Plugins
+  unarchive:
+    src: https://github.com/nagios-plugins/nagios-plugins/releases/download/release-{{ nagios_plugins_version }}/nagios-plugins-{{ nagios_plugins_version }}.tar.gz
+    remote_src: true
+    dest: /root/
+    creates: /root/nagios-plugins-{{ nagios_plugins_version }}
+  notify:
+    - Initial configuration Nagios Plugins
+    - Make nagios-plugins
+
+# --------------------------------------------------
+# CONFIGURATION NRPE
+# --------------------------------------------------
+- name: Push NRPE configuration file
+  template:
+    src: nrpe.cfg.j2
+    dest: /usr/local/nagios/etc/nrpe.cfg
+    owner: nagios
+    group: nagios
+    mode: '0644'
+  notify: restart nrpe
+  tags: nrpe_config
+
+# --------------------------------------------------
+# AJOUT CUSTOM SCRIPTs
+# --------------------------------------------------
+- name: get custom scripts from gitlab
+  git:
+    repo: "https://sources.le-filament.com/lefilament/nagios-plugin.git"
+    dest: "/usr/local/nagios/libexec/custom-plugin"
+    version: "master"
+  when: inventory_hostname in groups.backup_server
+
+- name: set file rights on custom plugins
+  file: name={{ item }} mode=0555
+  with_items:
+    - /usr/local/nagios/libexec/custom-plugin/check_cloud_storage.sh
+    - /usr/local/nagios/libexec/custom-plugin/check_odoo_storage.sh
+    - /usr/local/nagios/libexec/custom-plugin/check_odoo2_storage.sh
+  when: inventory_hostname in groups.backup_server
+
+- name: create custom-plugin repo if not created from previous tasks
+  file:
+    name: /usr/local/nagios/libexec/custom-plugin
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: add check_docker script
+  get_url:
+    url: https://raw.githubusercontent.com/timdaman/check_docker/master/check_docker/check_docker.py
+    dest: /usr/local/nagios/libexec/custom-plugin/check_docker.py
+    mode: '0555'
+  when: inventory_hostname in groups.docker
+
+- name: add check_mdstat script
+  get_url:
+    url: https://exchange.nagios.org/components/com_mtree/attachment.php?link_id=5423&cf_id=24
+    dest: /usr/local/nagios/libexec/custom-plugin/check_mdstat.sh
+    mode: '0555'
+  when: raid_config is defined
+
+- name: add extra scripts
+  get_url:
+    url: "{{ item.url }}"
+    dest: /usr/local/nagios/libexec/custom-plugin/{{ item.name }}
+    mode: '0555'
+  with_items: "{{ plugins_to_download }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: add nagios to www-data group
+  user:
+    name: nagios
+    groups: www-data
+    append: true
+  when: inventory_hostname in groups.owncloud_server | union(groups.docker_owncloud) | union(groups.docker_nextcloud)
+
+- name: add nagios to docker group
+  user:
+    name: nagios
+    groups: docker
+    append: true
+  when: inventory_hostname in groups.docker

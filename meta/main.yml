@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  author: Rémi
+  description: This roles deploys Nagios NRPE on every host for monitoring from Nagios
+  company: Le Filament (https://le-filament.com)
+  license: AGPL-3.0-or-later
+  min_ansible_version: 2.1
+  platforms:
+    - name: EL
+      versions:
+        - 7
+    - name: Ubuntu
+      versions:
+        - trusty
+        - xenial
+        - bionic
+        - focal
+  galaxy_tags:
+    - monitoring
+    - nagios
+    - nrpe

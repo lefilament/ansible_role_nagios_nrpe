@@ -1,0 +1,45 @@
+---
+
+- name: restart nrpe
+  service:
+    name: nrpe
+    state: restarted
+
+- name: Initial configuration Nagios NRPE
+  command: ./configure --enable-command-args --with-nagios-user=nagios --with-nagios-group=nagios --with-ssl=/usr/bin/openssl --with-ssl-lib=/usr/lib/x86_64-linux-gnu --enable-ssl
+  args:
+    chdir: /root/nrpe-{{ nrpe_version }}
+  async: 500
+  poll: 10
+
+- name: Make nagios NRPE
+  make:
+    chdir: /root/nrpe-{{ nrpe_version }}
+    target: "{{ item }}"
+  with_items:
+    - all
+    - install
+    - install-config
+    - install-init
+  async: 120
+  poll: 10
+
+- name: Systemd daemon reload
+  systemd: daemon-reload=yes
+
+- name: Initial configuration Nagios Plugins
+  command: ./configure --with-nagios-group=nagios --with-command-group=nagcmd --with-openssl
+  args:
+    chdir: /root/nagios-plugins-{{ nagios_plugins_version }}
+  async: 500
+  poll: 10
+
+- name: Make nagios-plugins
+  make:
+    chdir: /root/nagios-plugins-{{ nagios_plugins_version }}
+    target: "{{ item }}"
+  with_items:
+    - all
+    - install
+  async: 120
+  poll: 10
