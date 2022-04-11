@@ -144,3 +144,11 @@
     groups: docker
     append: true
   when: inventory_hostname in groups.docker
+
+- name: add cron job to update available packages every day
+  cron:
+    name: apt update
+    minute: "42"
+    hour: "7"
+    job: /usr/bin/apt update
+  when: inventory_hostname in groups.full_maintenance
