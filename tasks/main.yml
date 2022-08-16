@@ -108,13 +108,6 @@
     group: root
     mode: '0755'
 
-- name: add check_docker script
-  get_url:
-    url: https://raw.githubusercontent.com/timdaman/check_docker/master/check_docker/check_docker.py
-    dest: /usr/local/nagios/libexec/custom-plugin/check_docker.py
-    mode: '0555'
-  when: inventory_hostname in groups.docker
-
 - name: add check_mdstat script
   get_url:
     url: https://exchange.nagios.org/components/com_mtree/attachment.php?link_id=5423&cf_id=24
@@ -137,13 +130,6 @@
     groups: www-data
     append: true
   when: inventory_hostname in groups.owncloud_server | union(groups.docker_owncloud) | union(groups.docker_nextcloud)
-
-- name: add nagios to docker group
-  user:
-    name: nagios
-    groups: docker
-    append: true
-  when: inventory_hostname in groups.docker
 
 - name: add cron job to update available packages every day
   cron:

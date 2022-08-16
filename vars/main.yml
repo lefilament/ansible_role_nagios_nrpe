@@ -10,3 +10,5 @@ plugins_to_download:
     url: https://raw.githubusercontent.com/n1tr0-5urf3r/icinga2-scripts/master/plugins/check_fail2ban
   - name: check_gitlab.rb
     url: https://sources.le-filament.com/lefilament/nagios-plugin/-/raw/master/check_gitlab.rb
+  - name: check_docker.sh
+    url: https://sources.le-filament.com/lefilament/nagios-plugin/-/raw/master/check_docker.sh
