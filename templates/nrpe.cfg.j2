@@ -1,8 +1,8 @@
 allow_bash_command_substitution=0
-{% if inventory_hostname in groups.docker_nagios %}
-allowed_hosts={{ groups.docker_nagios | map('extract', hostvars, ['ansible_host']) | join(',') }},192.168.239.2,127.0.0.1
+{% if inventory_hostname in groups.docker_nagios | default([]) %}
+allowed_hosts={{ groups.docker_nagios | default([]) | map('extract', hostvars, ['ansible_host']) | join(',') }},192.168.239.2,127.0.0.1
 {% else %}
-allowed_hosts={{ groups.docker_nagios | map('extract', hostvars, ['ansible_host']) | join(',') }},127.0.0.1
+allowed_hosts={{ groups.docker_nagios | default([]) | map('extract', hostvars, ['ansible_host']) | join(',') }},127.0.0.1
 {% endif %}
 command_timeout=60
 connection_timeout=300
@@ -11,115 +11,126 @@ dont_blame_nrpe=0
 log_facility=daemon
 nrpe_user=nagios
 nrpe_group=nagios
-pid_file=/usr/local/nagios/var/nrpe.pid
+pid_file=/run/nagios/nrpe.pid
 server_port=5666
 
 # Generic checks
-command[check_hda1]=/usr/local/nagios/libexec/check_disk -u GB -w 20% -c 10% -p /
+command[check_hda1]=/usr/lib/nagios/plugins/check_disk -u GB -w 20% -c 10% -p /
 {% if raid_config is defined %}
 {% for device in raid_config.devices %}
-command[check_raid_{{ device }}]=/usr/local/nagios/libexec/custom-plugin/check_mdstat.sh {{ device }} {{ raid_config.disks }}
+command[check_raid_{{ device }}]=/usr/lib/nagios/custom-plugins/check_mdstat.sh {{ device }} {{ raid_config.disks }}
 {% endfor %}
 {% endif %}
-command[check_load]=/usr/local/nagios/libexec/check_load -r -w .85,.80,.75 -c .99,.95,.90
-command[check_mem]=/usr/local/nagios/libexec/custom-plugin/check_mem.pl -f -C -w 20 -c 5
-{% if inventory_hostname in groups.docker %}
-command[check_total_procs]=/usr/local/nagios/libexec/check_procs -w {{ ((group_names | length - 7) * 20 + 370) | int | abs }} -c {{ ((group_names | length - 7) * 20 + 410) | int | abs }}
+command[check_load]=/usr/lib/nagios/plugins/check_load -r -w .85,.80,.75 -c .99,.95,.90
+command[check_mem]=/usr/lib/nagios/custom-plugins/check_mem.pl -f -C -w 20 -c 5
+{% if inventory_hostname in groups.docker | default([]) %}
+command[check_total_procs]=/usr/lib/nagios/plugins/check_procs -w {{ ((group_names | length - 6) * 20 + 370) | int | abs }} -c {{ ((group_names | length - 6) * 20 + 410) | int | abs }}
 {% else %}
-command[check_total_procs]=/usr/local/nagios/libexec/check_procs -w 290 -c 350
+command[check_total_procs]=/usr/lib/nagios/plugins/check_procs -w 290 -c 350
 {% endif %}
-command[check_users]=/usr/local/nagios/libexec/check_users -w 5 -c 10
-command[check_version]=/usr/local/nagios/libexec/custom-plugin/check_version.sh
+command[check_users]=/usr/lib/nagios/plugins/check_users -w 5 -c 10
+command[check_version]=/usr/lib/nagios/custom-plugins/check_version.sh
 
 # Check specific processes
-command[check_fail2ban]=/usr/local/nagios/libexec/custom-plugin/check_fail2ban -w 350 -c 500
-{% if inventory_hostname in groups.docker_gitlab %}
-command[check_procs_sshd]=/usr/local/nagios/libexec/check_procs -w 4 -c 2: -C sshd -a -D
+{% if inventory_hostname in groups.gitlab | default([]) %}
+{% set fail2ban_jails = fail2ban_jails + ['gitlab'] %}
+{% endif %}
+{% if inventory_hostname in groups.odoo_server | default([]) or inventory_hostname in groups.owncloud_server | default([]) or inventory_hostname in groups.gitlab | default([]) %}
+{% set fail2ban_jails = fail2ban_jails + ['nginx-http-auth', 'nginx-botsearch'] %}
+{% endif %}
+{% if inventory_hostname in groups.docker | default([]) and inventory_hostname not in groups.docker_nextcloud | default([]) %}
+{% set fail2ban_jails = fail2ban_jails + ['traefik-auth'] %}
+{% endif %}
+command[check_fail2ban]=/usr/lib/nagios/custom-plugins/check_fail2ban.sh --warning 250 --critical 500 {{ fail2ban_jails | join(',') }}
+{% if inventory_hostname in groups.docker_gitlab | default([]) %}
+command[check_procs_sshd]=/usr/lib/nagios/plugins/check_procs -w 4 -c 2: -C sshd -a -D
 {% else %}
-command[check_procs_sshd]=/usr/local/nagios/libexec/check_procs -w 2 -c 1: -C sshd -a -D
+command[check_procs_sshd]=/usr/lib/nagios/plugins/check_procs -w 2 -c 1: -C sshd -a -D
 {% endif %}
-{% if inventory_hostname in groups.odoo_server | union(groups.owncloud_server) %}
-command[check_procs_nginx]=/usr/local/nagios/libexec/check_procs -w 5 -c 2: -C nginx
+{% if inventory_hostname in groups.odoo_server | default([]) | union(groups.owncloud_server | default([])) %}
+command[check_procs_nginx]=/usr/lib/nagios/plugins/check_procs -w 5 -c 2: -C nginx
 {% endif %}
-{% if inventory_hostname in groups.full_maintenance %}
-command[check_procs_filebeat]=/usr/local/nagios/libexec/check_procs -w 2 -c 1: -C filebeat
-command[check_apt]=/usr/local/nagios/libexec/check_apt
+{% if inventory_hostname in groups.full_maintenance | default([]) %}
+command[check_procs_filebeat]=/usr/lib/nagios/plugins/check_procs -w 2 -c 1: -C filebeat
+command[check_apt]=/usr/lib/nagios/plugins/check_apt
 {% endif %}
-{% if inventory_hostname in groups.odoo_server %}
-command[check_procs_odoo]=/usr/local/nagios/libexec/check_procs -w 2 -c 1: -C python -a odoo-bin
+{% if inventory_hostname in groups.odoo_server | default([]) %}
+command[check_procs_odoo]=/usr/lib/nagios/plugins/check_procs -w 2 -c 1: -C python -a odoo-bin
 {% endif %}
-{% if inventory_hostname in groups.owncloud_server %}
-command[check_procs_owncloud]=/usr/local/nagios/libexec/check_procs -w 10 -c 2: -C php-fpm{{ php_version | default('7.2') }}
+{% if inventory_hostname in groups.owncloud_server | default([]) %}
+command[check_procs_owncloud]=/usr/lib/nagios/plugins/check_procs -w 10 -c 2: -C php-fpm{{ php_version | default('7.2') }}
 {% endif %}
 
-{% if inventory_hostname in groups.backup_server %}
+{% if inventory_hostname in groups.backup_server | default([]) %}
 # Backup Server
-command[check_cloud_storage]=/usr/local/nagios/libexec/custom-plugin/check_cloud_storage.sh
-command[check_odoo_storage]=/usr/local/nagios/libexec/custom-plugin/check_odoo_storage.sh
-command[check_odoo2_storage]=/usr/local/nagios/libexec/custom-plugin/check_odoo2_storage.sh
+command[check_cloud_storage]=/usr/lib/nagios/custom-plugins/check_cloud_storage.sh
+command[check_odoo_storage]=/usr/lib/nagios/custom-plugins/check_odoo_storage.sh
+command[check_odoo2_storage]=/usr/lib/nagios/custom-plugins/check_odoo2_storage.sh
 
 {% endif %}
-{% if inventory_hostname in groups.docker %}
+{% if inventory_hostname in groups.docker | default([]) %}
 # Docker Containers
-command[check_docker_proxy]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^inverseproxy.*' --cpu 10:15 --memory 10:15
+command[check_docker_proxy]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^inverseproxy.*' --cpu 10:15 --memory 10:15
 {% endif %}
-{% if inventory_hostname in groups.docker_auth %}
-command[check_docker_ldap]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '.*ldap.*' --cpu 5:10 --memory 12:17
-command[check_docker_sso]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^sso' --cpu 5:10 --memory 7:12
+{% if inventory_hostname in groups.docker_auth | default([]) %}
+command[check_docker_ldap]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '.*ldap.*' --cpu 5:10 --memory 12:17
+command[check_docker_sso]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^sso' --cpu 5:10 --memory 7:12
 {% endif %}
-{% if inventory_hostname in groups.docker_drawio %}
-command[check_docker_drawio]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^drawio.*' --cpu 5:10 --memory 7:12
+{% if inventory_hostname in groups.docker_drawio | default([]) %}
+command[check_docker_drawio]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^drawio.*' --cpu 5:10 --memory 7:12
 {% endif %}
-{% if inventory_hostname in groups.docker_etherpad %}
-command[check_docker_etherpad]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^etherpad.*' --cpu 5:10 --memory 7:12
+{% if inventory_hostname in groups.docker_etherpad | default([]) %}
+command[check_docker_etherpad]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^etherpad.*' --cpu 5:10 --memory 7:12
 {% endif %}
-{% if inventory_hostname in groups.docker_framadate %}
-command[check_docker_framadate]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^framadate.*' --cpu 5:10 --memory 7:12
+{% if inventory_hostname in groups.docker_framadate | default([]) %}
+command[check_docker_framadate]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^framadate.*' --cpu 5:10 --memory 7:12
 {% endif %}
-{% if inventory_hostname in groups.docker_gitlab %}
-command[check_docker_gitlab]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^gitlab.*' --cpu 5:10 --memory 40:60
+{% if inventory_hostname in groups.docker_gitlab | default([]) %}
+command[check_docker_gitlab]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^gitlab.*' --cpu 5:10 --memory 40:60
 {% endif %}
-{% if inventory_hostname in groups.docker_jitsi %}
-command[check_docker_jitsi]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^jitsi.*' --cpu 5:10 --memory 7:12
+{% if inventory_hostname in groups.docker_jitsi | default([]) %}
+command[check_docker_jitsi]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^jitsi.*' --cpu 5:10 --memory 7:12
 {% endif %}
-{% if inventory_hostname in groups.docker_mattermost %}
-command[check_docker_mattermost]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^mattermost.*' --cpu 5:10 --memory 7:12
+{% if inventory_hostname in groups.docker_mattermost | default([]) %}
+command[check_docker_mattermost]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^mattermost.*' --cpu 5:10 --memory 7:12
 {% endif %}
-{% if inventory_hostname in groups.docker_nagios %}
-command[check_docker_nagios]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^nagios.*' --cpu 5:15 --memory 10:15
+{% if inventory_hostname in groups.docker_nagios | default([]) %}
+command[check_docker_nagios]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^nagios.*' --cpu 5:15 --memory 10:15
 {% endif %}
-{% if inventory_hostname in groups.docker_nextcloud %}
-{% if inventory_hostname in groups.docker_odoo %}
-command[check_docker_cloud]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^nextcloud.*' --cpu 70:80 --memory 15:25
+{% if inventory_hostname in groups.docker_nextcloud | default([]) %}
+{% if inventory_hostname in groups.docker_odoo | default([]) %}
+command[check_docker_cloud]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^nextcloud.*' --cpu 70:80 --memory 15:25
 {% else %}
-command[check_docker_cloud]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^nextcloud.*' --cpu 70:80 --memory 65:85
+command[check_docker_cloud]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^nextcloud.*' --cpu 70:80 --memory 65:85
 {% endif %}
 {% endif %}
-{% if inventory_hostname in groups.docker_odoo %}
-{% if odoo_prod is defined %}
-command[check_docker_odoo]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^odoo($|_.*)' --cpu 10:15 --memory 35:45
+{% if inventory_hostname in groups.docker_odoo | default([]) %}
+{% for name, values in odoo_instances.items() %}
+{# if prod instance #}
+{% if values.prod_instance | default(false) == name %}
+command[check_docker_{{ name }}]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^{{ name }}($|_.*)' --cpu 10:15 --memory 35:45
+{% else %}
+command[check_docker_{{ name }}]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^{{ name }}($|_.*)' --cpu 10:15 --memory 20:25
 {% endif %}
-{% for instance in odoo_nonprod_instances | default([]) %}
-command[check_docker_{{ instance.name }}]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^{{ instance.dir }}.*' --cpu 10:15 --memory 20:25
 {% endfor %}
 {% if restrict_internet_access and whitelisted_urls is defined %}
-command[check_docker_whitelists]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^whitelists.*' --cpu 10:10 --memory 5:7
+command[check_docker_whitelists]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^whitelists.*' --cpu 10:10 --memory 5:7
 {% endif %}
 {% endif %}
-{% if inventory_hostname in groups.docker_owncloud %}
-{% if inventory_hostname in groups.docker_odoo %}
-command[check_docker_cloud]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^owncloud.*' --cpu 70:80 --memory 15:25
+{% if inventory_hostname in groups.docker_owncloud | default([]) %}
+{% if inventory_hostname in groups.docker_odoo | default([]) %}
+command[check_docker_cloud]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^owncloud.*' --cpu 70:80 --memory 15:25
 {% else %}
-command[check_docker_cloud]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^owncloud.*' --cpu 70:80 --memory 65:55
+command[check_docker_cloud]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^owncloud.*' --cpu 70:80 --memory 65:55
 {% endif %}
 {% endif %}
-{% if inventory_hostname in groups.docker_privatebin %}
-command[check_docker_privatebin]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^privatebin' --cpu 5:10 --memory 7:12
+{% if inventory_hostname in groups.docker_privatebin | default([]) %}
+command[check_docker_privatebin]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^privatebin' --cpu 5:10 --memory 7:12
 {% endif %}
-{% if inventory_hostname in groups.docker_tuleap %}
-command[check_docker_tuleap]=/usr/local/nagios/libexec/custom-plugin/check_docker.sh --filter '^tuleap.*' --cpu 5:10 --memory 9:14
+{% if inventory_hostname in groups.docker_tuleap | default([]) %}
+command[check_docker_tuleap]=/usr/lib/nagios/custom-plugins/check_docker.sh --filter '^tuleap.*' --cpu 5:10 --memory 9:14
 {% endif %}
-{% if inventory_hostname in groups.gitlab %}
-command[check_gitlab_services]=/usr/local/nagios/libexec/custom-plugin/check_gitlab.rb -m services
-command[check_gitlab_health]=/usr/local/nagios/libexec/custom-plugin/check_gitlab.rb -m health -k -H https://localhost
+{% if inventory_hostname in groups.gitlab | default([]) %}
+command[check_gitlab_services]=/usr/lib/nagios/custom-plugins/check_gitlab.rb -m services
+command[check_gitlab_health]=/usr/lib/nagios/custom-plugins/check_gitlab.rb -m health -k -H https://localhost
 {% endif %}

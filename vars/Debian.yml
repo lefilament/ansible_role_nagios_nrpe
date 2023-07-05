@@ -1,10 +1,10 @@
 ---
 packages_to_install:
-  - git
-  - autoconf
-  - gcc
-  - libc6
-  - libmcrypt-dev
-  - make
-  - libssl-dev
-  - wget
+    - git
+    - autoconf
+    - gcc
+    - libc6
+    - libmcrypt-dev
+    - make
+    - libssl-dev
+    - wget
